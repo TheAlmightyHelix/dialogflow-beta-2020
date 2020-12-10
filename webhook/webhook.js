@@ -116,11 +116,11 @@ async function cartList() {
     redirect: 'follow'
   }
 
-  return await (fetch(
+  return await fetch(
     ENDPOINT_URL + '/application/products', request
   ).then(
     res => res.json()
-  )).products
+  )
 }
 
 
@@ -437,7 +437,7 @@ app.post('/', express.json(), (req, res) => {
 
   async function rCart() {
     let list = await cartList()
-    // console.log(list)
+    // console.log(list.products)
     let quantity = agent.parameters.quantity ? agent.parameters.quantity : 1
     let request = {
       method: 'DELETE',
@@ -447,20 +447,19 @@ app.post('/', express.json(), (req, res) => {
       }
     }
 
-    for (const item of list) {
-      if (item.name === agent.parameters.product) {
-        console.log(item)
+    for (const item of list.products) {
+      console.log('ITEMS: ', item)
+      console.log('PARAM: ', agent.parameters.item, agent.parameters.quantity)
+      if (item.name === agent.parameters.item) {
         for (let i = 0; i < quantity; i++) {
           await fetch(
             ENDPOINT_URL + '/application/products/' + item.id, request
           )
         }
-
         agent.add('Done!')
         return
       }
     }
-
   }
 
 
