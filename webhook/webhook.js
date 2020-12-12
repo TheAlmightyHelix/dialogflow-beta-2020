@@ -69,7 +69,7 @@ async function redirect(page) {
 
 
 
-async function message(agent, isUser, m) {
+async function message(agent, isUser, m, date = new Date()) {
   isUser ? '' : agent.add(m)
 
   let request = {
@@ -79,21 +79,13 @@ async function message(agent, isUser, m) {
       'x-access-token': token
     },
     body: JSON.stringify({
-      "date": new Date().toISOString(),
+      "date": date.toISOString(),
       "isUser": isUser,
       "text": m
     })
   }
 
-  await fetch(
-    ENDPOINT_URL + '/application', request
-  ).then(
-    //   res => res.json()
-    // ).then(
-    data => console.log(data)
-  ).catch(
-    err => console.log("ERROR: " + err)
-  )
+  await fetch(ENDPOINT_URL + '/application/messages', request)
 }
 
 
@@ -103,6 +95,8 @@ async function productList() {
     ENDPOINT_URL + '/products'
   ).then(
     res => res.json()
+  ).catch(
+    err => console.log(err)
   )).products
 }
 
@@ -173,20 +167,14 @@ app.post('/', express.json(), (req, res) => {
 
 
 
-  function welcome() {
-    agent.add('Welcome to WiscShop!')
-    // console.log(agent.query)
-    console.log(ENDPOINT_URL)
+  async function welcome() {
+    await message(agent, true, agent.query)
+    await message(agent, false, 'Welcome to WiscShop!')
   }
 
 
 
   async function login() {
-
-    if (token) {
-      agent.add('You are already logged in')
-      return
-    }
     // You need to set this from `username` entity that you declare in DialogFlow
     username = agent.parameters.username
     // You need to set this from password entity that you declare in DialogFlow
@@ -194,7 +182,7 @@ app.post('/', express.json(), (req, res) => {
 
     await getToken().then(t => {
       if (t) {
-        agent.add('You are now logged in!')
+        message(agent, false, 'You are now logged in!')
         agent.context.set({
           'name': 'verified_user',
           'lifespan': 50,
@@ -207,7 +195,7 @@ app.post('/', express.json(), (req, res) => {
         redirect(`/${username}`)
       }
       else
-        agent.add('invalid credentials. Please try again.')
+        message(agent, false, 'invalid credentials. Please try again.')
     }
     )
   }
@@ -215,6 +203,9 @@ app.post('/', express.json(), (req, res) => {
 
 
   async function qCategories() {
+
+    await message(agent, true, agent.query)
+
     await fetch(
       ENDPOINT_URL + '/categories'
     ).then(
@@ -222,7 +213,7 @@ app.post('/', express.json(), (req, res) => {
     ).then(
       data => {
         console.log('We have ' + data.categories.toString())
-        agent.add('We have ' + data.categories.join(', ') + '.')
+        message(agent, false, 'We have ' + data.categories.join(', ') + '.')
       }
     )
   }
@@ -231,6 +222,8 @@ app.post('/', express.json(), (req, res) => {
 
   async function qTags() {
 
+    await message(agent, true, agent.query)
+
     await fetch(
       ENDPOINT_URL + '/categories/' + agent.parameters.category + '/tags'
     ).then(
@@ -238,7 +231,7 @@ app.post('/', express.json(), (req, res) => {
     ).then(
       data => {
         console.log(data)
-        agent.add(`We have ${data.tags.join(', ')} tags for ${agent.parameters.category}`)
+        message(agent, false, `We have ${data.tags.join(', ')} tags for ${agent.parameters.category}`)
       }
     )
   }
@@ -255,6 +248,8 @@ app.post('/', express.json(), (req, res) => {
       redirect: 'follow'
     }
 
+    await message(agent, true, agent.query)
+
     await fetch(
       ENDPOINT_URL + '/application/products', request
     ).then(
@@ -266,7 +261,7 @@ app.post('/', express.json(), (req, res) => {
         for (const iterator of data.products) {
           names.push(iterator.name)
         }
-        agent.add('You have ' + names.join(', ') + ' in your cart.')
+        message(agent, false, 'You have ' + names.join(', ') + ' in your cart.')
       }
     )
   }
@@ -283,6 +278,8 @@ app.post('/', express.json(), (req, res) => {
       redirect: 'follow'
     }
 
+    await message(agent, true, agent.query)
+
     await fetch(
       ENDPOINT_URL + '/application/products', request
     ).then(
@@ -292,9 +289,9 @@ app.post('/', express.json(), (req, res) => {
         console.log(data.products)
         let total = 0.0
         for (const iterator of data.products) {
-          total += iterator.price
+          total += iterator.price * iterator.count
         }
-        agent.add(`Your total is $${total}.`)
+        message(agent, false, `Your total is $${total}.`)
       }
     )
 
@@ -304,13 +301,15 @@ app.post('/', express.json(), (req, res) => {
 
   async function qProduct() {
     let list = await productList()
-    // console.log(list)
+    console.log(list)
+    message(agent, true, agent.query)
 
     for (const item of list) {
-      if (item.name === agent.parameters.product) {
-        agent.add('Sure! The description says, ' + item.description)
+      if (item.name.toLowerCase() === agent.parameters.product.toLowerCase()) {
+        console.log(item.description)
+        await message(agent, false, 'Sure! The description says: ' + item.description)
         if (item.description) {
-          agent.add('Do you want to hear the reviews?')
+          await message(agent, false, 'Do you want to hear the reviews?')
 
           agent.context.set({
             'name': 'QProduct-followup',
@@ -330,6 +329,7 @@ app.post('/', express.json(), (req, res) => {
     const item = agent.context.get('qproduct-followup')
     // console.log(item)
 
+    await message(agent, true, agent.query)
 
     await fetch(
       ENDPOINT_URL + '/products/' + item.parameters.itemID + '/reviews'
@@ -337,10 +337,9 @@ app.post('/', express.json(), (req, res) => {
       res => res.json()
     ).then(
       data => {
-        // console.log(data)
 
         for (const review of data.reviews) {
-          agent.add('Review titled ' + review.title + ' says, ' + review.text)
+          message(agent, false, 'Review titled \"' + review.title + '\" says, ' + review.text)
 
         }
       }
@@ -350,6 +349,8 @@ app.post('/', express.json(), (req, res) => {
   async function qStars() {
     const item = agent.context.get('qproduct-followup')
 
+    await message(agent, true, agent.query)
+
     await fetch(
       ENDPOINT_URL + '/products/' + item.parameters.itemID + '/reviews'
     ).then(
@@ -357,12 +358,11 @@ app.post('/', express.json(), (req, res) => {
     ).then(
       data => {
         let sum = 0.0
-
         for (const review of data.reviews) {
           sum += review.stars
         }
 
-        agent.add(`This item has an average rating of ${sum / data.reviews.length} stars.`)
+        message(agent, false, `This item has an average rating of ${sum / data.reviews.length} stars.`)
       }
     )
   }
@@ -370,12 +370,11 @@ app.post('/', express.json(), (req, res) => {
 
 
   async function aTags() {
+    await message(agent, true, agent.query)
 
     let tags = []
     const endpoint = (await whereAmI()).split('/')
-    console.log('category: ' + endpoint[endpoint.length - 1])
     const legalTags = await tagList(endpoint[endpoint.length - 1])
-    console.log(legalTags)
 
     for (const item of agent.parameters.tag) {
       if (legalTags.includes(item)) tags.push(item)
@@ -420,15 +419,19 @@ app.post('/', express.json(), (req, res) => {
       }
     }
 
+    await message(agent, true, agent.query)
+    let total = 0.0
+
     for (const item of list) {
-      if (item.name === agent.parameters.product) {
+      if (item.name.toLowerCase() === agent.parameters.product.toLowerCase()) {
+        total += item.price
         for (let i = 0; i < quantity; i++) {
           await fetch(
             ENDPOINT_URL + '/application/products/' + item.id, request
           )
         }
-        agent.add('added!')
-        return
+        await message(agent, false, 'added!')
+        return total
       }
     }
   }
@@ -447,34 +450,58 @@ app.post('/', express.json(), (req, res) => {
       }
     }
 
+    await message(agent, true, agent.query)
+
     for (const item of list.products) {
       console.log('ITEMS: ', item)
       console.log('PARAM: ', agent.parameters.item, agent.parameters.quantity)
-      if (item.name === agent.parameters.item) {
+      if (item.name.toLowerCase() === agent.parameters.item.toLowerCase()) {
         for (let i = 0; i < quantity; i++) {
-          await fetch(
-            ENDPOINT_URL + '/application/products/' + item.id, request
-          )
+          await fetch(ENDPOINT_URL + '/application/products/' + item.id, request)
         }
-        agent.add('Done!')
+        await message(agent, false, 'Done!')
         return
       }
     }
   }
 
 
+  async function confirm() {
+    await message(agent, true, agent.query)
+
+    await redirect(`/${username}/cart-confirmed`)
+
+  }
+
+  async function review() {
+
+    await redirect(`/${username}/cart-review`)
+    await qCartItems()
+    await qCartTotal()
+
+  }
+
+
 
   async function navigate() {
+    await message(agent, true, agent.query, new Date())
     const page = agent.parameters.page
     const category = agent.parameters.category
+    const product = agent.parameters.product
 
 
-    if (!page && !category) {
-      agent.add('Please try again and specify the page you want to go to or the type of product you want to browse.')
+
+
+    if (!page && !category && !product) {
+      await message(
+        agent,
+        false,
+        'Please try again and specify the page you want to go to or the type of product you want to browse.'
+      )
       return
     }
-    if (!category) {
-      agent.add('Redirecting to ' + page)
+    if (!category && !product) {
+      await message(agent, false, 'Redirecting to ' + page)
       if (page === 'Home') {
         await redirect(`/${username}`)
       }
@@ -486,9 +513,19 @@ app.post('/', express.json(), (req, res) => {
         await redirect(`/${username}`)
       else if (page === 'Cart')
         await redirect(`/${username}/cart`)
+    } else if (!category && !page) {
+      // http://localhost:3000/yuheng/sweatshirts/products/13
+      let list = await productList()
+      for (const item of list) {
+        if (product.toLowerCase() === item.name.toLowerCase()) {
+          await message(agent, false, 'Showing ' + product)
+          await redirect(`/${username}/${item.category}/products/${item.id}`)
+          break
+        }
+      }
     }
     else {
-      agent.add('Showing all the ' + category)
+      await message(agent, false, 'Showing all the ' + category)
       agent.context.set({
         'name': 'category_page',
         'lifespan': 5,
@@ -505,7 +542,8 @@ app.post('/', express.json(), (req, res) => {
 
 
   async function logout() {
-    agent.add('logging you out...')
+    await message(agent, true, agent.query)
+    await message(agent, false, 'logging you out...')
 
     agent.context.set({
       'name': 'verified_user',
@@ -513,6 +551,17 @@ app.post('/', express.json(), (req, res) => {
     }
     )
     await redirect('')
+
+    // erase messages
+    let request = {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-access-token': token
+      }
+    }
+    await fetch(ENDPOINT_URL + '/application/messages', request)
+
     token = ''
     console.log('log out finished')
   }
@@ -520,10 +569,21 @@ app.post('/', express.json(), (req, res) => {
 
 
   function utility() {
-    agent.add('token: ' + (token ? 'valid' : 'none'))
+    // await message(agent, true, agent.query, new Date())
+
     console.log(token)
 
-    let request = {
+    // erase messages
+    let request1 = {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-access-token': token
+      }
+    }
+    fetch(ENDPOINT_URL + '/application/messages', request1)
+
+    let request2 = {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -533,12 +593,15 @@ app.post('/', express.json(), (req, res) => {
     }
 
     fetch(
-      ENDPOINT_URL + '/application', request
+      ENDPOINT_URL + '/application', request2
     ).then(
       res => res.json()
     ).then(
       data => console.log(data)
     )
+
+    agent.add('done')
+    // await message(agent, false, 'token: ' + (token ? 'valid' : 'none'), new Date())
   }
 
 
@@ -557,6 +620,8 @@ app.post('/', express.json(), (req, res) => {
   intentMap.set('ATags', aTags)
   intentMap.set('ACart', aCart)
   intentMap.set('RCart', rCart)
+  intentMap.set('APurchase', review)
+  intentMap.set('AConfirm', confirm)
   intentMap.set('Navigate', navigate)
   intentMap.set('Logout', logout)
   intentMap.set('Utility', utility)
